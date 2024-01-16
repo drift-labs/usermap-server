@@ -36,7 +36,7 @@ const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
-const endpoint = process.env.ENDPOINT;
+const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
 	logger.error('ENDPOINT env var is required');
 	process.exit(1);
@@ -83,14 +83,14 @@ server.headersTimeout = 65 * 1000;
 export class WebsocketCacheProgramAccountSubscriber {
 	program: Program;
 	redisClient: RedisClient;
-	listenerId: number | null = null;
+	listenerId: number | undefined;
 	options: { filters: MemcmpFilter[]; commitment?: Commitment };
 
 	// For reconnection
 	isUnsubscribing = false;
-	resubTimeoutMs = 100;
+	resubTimeoutMs?: number | undefined;
 	receivingData = false;
-	timeoutId: NodeJS.Timeout | null = null;
+	timeoutId: NodeJS.Timeout | undefined;
 
 	constructor(
 		program: Program,
@@ -98,7 +98,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		options: { filters: MemcmpFilter[]; commitment?: Commitment } = {
 			filters: [],
 		},
-		resubTimeoutMs?: number
+		resubTimeoutMs?: number | undefined
 	) {
 		this.program = program;
 		this.redisClient = redisClient;
@@ -175,7 +175,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		}, this.resubTimeoutMs);
 	}
 
-	unsubscribe(onResub = false): Promise<void> {
+	async unsubscribe(onResub = false): Promise<void> {
 		if (!onResub) {
 			this.resubTimeoutMs = undefined;
 		}
@@ -184,16 +184,17 @@ export class WebsocketCacheProgramAccountSubscriber {
 		this.timeoutId = undefined;
 
 		if (this.listenerId != null) {
-			const promise = this.program.provider.connection
+			await this.program.provider.connection
 				.removeAccountChangeListener(this.listenerId)
 				.then(() => {
 					this.listenerId = undefined;
 					this.isUnsubscribing = false;
 				});
-			return promise;
+			return;
 		} else {
 			this.isUnsubscribing = false;
 		}
+		return;
 	}
 }
 
