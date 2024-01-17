@@ -1,12 +1,13 @@
 {
   "name": "usermap-server",
   "version": "1.0.0",
-  "main": "lib/index.js",
-  "author": "nour",
+  "main": "lib/publisher.js",
+  "author": "nouralharithi",
   "license": "MIT",
   "private": false,
   "scripts": {
-    "build": "tsc",
+    "build": "yarn clean && tsc",
+    "clean": "rm -rf lib",
     "prettify": "prettier --check './src/**/*.ts'",
     "prettify:fix": "prettier --write './src/**/*.ts'",
     "lint": "eslint . --ext ts --quiet",
