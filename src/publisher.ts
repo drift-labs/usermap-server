@@ -120,6 +120,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString()}`
 			);
+			await this.redisClient.client.rpush('user_pubkeys', keyedAccountInfo.accountId.toString());
 			return;
 		}
 		const existingSlot = existingData.split('::')[0];
