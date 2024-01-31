@@ -14,9 +14,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 
 import * as http from 'http';
-import {
-	runtimeSpecsGauge,
-} from './core/metrics';
+import { runtimeSpecsGauge } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import { RedisClient } from './utils/redisClient';
 import {
@@ -118,16 +116,19 @@ export class WebsocketCacheProgramAccountSubscriber {
 		if (!existingData) {
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString()}`
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
-			await this.redisClient.client.rpush('user_pubkeys', keyedAccountInfo.accountId.toString());
+			await this.redisClient.client.rpush(
+				'user_pubkeys',
+				keyedAccountInfo.accountId.toString()
+			);
 			return;
 		}
 		const existingSlot = existingData.split('::')[0];
 		if (incomingSlot >= parseInt(existingSlot)) {
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString()}`
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
 			return;
 		}
