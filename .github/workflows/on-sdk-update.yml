@@ -1,8 +1,5 @@
 name: Deploy on sdk update
 on:
-  push:
-    branches:
-      - master
   repository_dispatch:
     types: [sdk-update]
 
