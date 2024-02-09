@@ -216,7 +216,8 @@ async function main() {
 	const subscriber = new WebsocketCacheProgramAccountSubscriber(
 		program,
 		redisClient,
-		{ filters, commitment: 'confirmed' }
+		{ filters, commitment: 'confirmed' },
+		30_000
 	);
 	await subscriber.subscribe();
 }

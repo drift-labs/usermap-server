@@ -1,4 +1,4 @@
-import { DriftClient, DriftEnv, UserMap, Wallet } from '@drift-labs/sdk';
+import { BulkAccountLoader, DriftClient, DriftEnv, UserMap, Wallet } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
@@ -30,6 +30,10 @@ async function main() {
 		connection,
 		wallet,
 		env: driftEnv,
+		accountSubscription: {
+			type: 'polling',
+			accountLoader: new BulkAccountLoader(connection, 'finalized', 0)
+		}
 	});
 	await driftClient.subscribe();
 
@@ -64,7 +68,9 @@ async function main() {
 
 		// Process the keys
 		for (const key of keys) {
+			if (key == 'user_pubkeys') continue;
 			if (userMap.get(key) === undefined) {
+				console.log(`Pruning idle or deleted user: ${key}`);
 				await redisClient.client.del(key);
 				await redisClient.client.lrem('user_pubkeys', 0, key);
 			}
