@@ -143,7 +143,6 @@ export class WebsocketCacheProgramAccountSubscriber {
 			this.program.programId,
 			(keyedAccountInfo, context) => {
 				if (this.resubTimeoutMs) {
-					this.receivingData = true;
 					clearTimeout(this.timeoutId);
 					this.handleRpcResponse(context, keyedAccountInfo);
 					this.setTimeout();
@@ -157,6 +156,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		);
 
 		if (this.resubTimeoutMs) {
+			this.receivingData = true;
 			this.setTimeout();
 		}
 	}
