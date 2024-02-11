@@ -14,9 +14,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 
 import * as http from 'http';
-import {
-	runtimeSpecsGauge,
-} from './core/metrics';
+import { runtimeSpecsGauge } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import { RedisClient } from './utils/redisClient';
 import {
@@ -118,16 +116,19 @@ export class WebsocketCacheProgramAccountSubscriber {
 		if (!existingData) {
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString()}`
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
-			await this.redisClient.client.rpush('user_pubkeys', keyedAccountInfo.accountId.toString());
+			await this.redisClient.client.rpush(
+				'user_pubkeys',
+				keyedAccountInfo.accountId.toString()
+			);
 			return;
 		}
 		const existingSlot = existingData.split('::')[0];
 		if (incomingSlot >= parseInt(existingSlot)) {
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString()}`
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
 			return;
 		}
@@ -142,7 +143,6 @@ export class WebsocketCacheProgramAccountSubscriber {
 			this.program.programId,
 			(keyedAccountInfo, context) => {
 				if (this.resubTimeoutMs) {
-					this.receivingData = true;
 					clearTimeout(this.timeoutId);
 					this.handleRpcResponse(context, keyedAccountInfo);
 					this.setTimeout();
@@ -156,6 +156,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		);
 
 		if (this.resubTimeoutMs) {
+			this.receivingData = true;
 			this.setTimeout();
 		}
 	}
@@ -215,7 +216,8 @@ async function main() {
 	const subscriber = new WebsocketCacheProgramAccountSubscriber(
 		program,
 		redisClient,
-		{ filters, commitment: 'confirmed' }
+		{ filters, commitment: 'confirmed' },
+		30_000
 	);
 	await subscriber.subscribe();
 }
