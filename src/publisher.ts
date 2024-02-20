@@ -20,11 +20,13 @@ import { RedisClient } from './utils/redisClient';
 import {
 	DriftClient,
 	DriftEnv,
+	SlotSubscriber,
 	Wallet,
 	getNonIdleUserFilter,
 	getUserFilter,
 } from '@drift-labs/sdk';
 import { sleep } from './utils/utils';
+import { setupEndpoints } from './endpoints';
 
 require('dotenv').config();
 
@@ -71,6 +73,9 @@ runtimeSpecsGauge.addCallback((obs) => {
 
 const server = http.createServer(app);
 
+const httpPort = parseInt(process.env.PORT || '5001');
+server.listen(httpPort);
+
 // Default keepalive is 5s, since the AWS ALB timeout is 60 seconds, clients
 // sometimes get 502s.
 // https://shuheikagawa.com/blog/2019/04/25/keep-alive-timeout/
@@ -89,6 +94,10 @@ export class WebsocketCacheProgramAccountSubscriber {
 	resubTimeoutMs?: number | undefined;
 	receivingData = false;
 	timeoutId: NodeJS.Timeout | undefined;
+
+	// For Health Metrics
+	lastReceivedSlot: number;
+	lastWriteTs: number;
 
 	constructor(
 		program: Program,
@@ -110,10 +119,14 @@ export class WebsocketCacheProgramAccountSubscriber {
 		keyedAccountInfo: KeyedAccountInfo
 	) {
 		const incomingSlot = context.slot;
+
+		this.lastReceivedSlot = incomingSlot;
+
 		const existingData = await this.redisClient.client.get(
 			keyedAccountInfo.accountId.toString()
 		);
 		if (!existingData) {
+			this.lastWriteTs = Date.now();
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
@@ -126,12 +139,21 @@ export class WebsocketCacheProgramAccountSubscriber {
 		}
 		const existingSlot = existingData.split('::')[0];
 		if (incomingSlot >= parseInt(existingSlot)) {
+			this.lastWriteTs = Date.now();
 			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
 			return;
 		}
+	}
+
+	public getHealthMetrics() {
+		return {
+			isSubscribed: this.listenerId != null,
+			lastReceivedSlot: this.lastReceivedSlot,
+			lastWriteTs: this.lastWriteTs,
+		};
 	}
 
 	async subscribe(): Promise<void> {
@@ -219,7 +241,29 @@ async function main() {
 		{ filters, commitment: 'confirmed' },
 		30_000
 	);
+
+	const slotSubscriber = new SlotSubscriber(connection, {
+		resubTimeoutMs: 2_000,
+	});
+	await slotSubscriber.subscribe();
+
+	const core: Core = {
+		app,
+		connection,
+		wallet,
+		driftClient,
+		redisClient,
+		slotSubscriber,
+		publisher: subscriber,
+	};
+
 	await subscriber.subscribe();
+
+	setupEndpoints(core);
+
+	console.log(``);
+	console.log(`Server is set up and running. Port: ${httpPort}`);
+	console.log(``);
 }
 
 async function recursiveTryCatch(f: () => Promise<void>) {
