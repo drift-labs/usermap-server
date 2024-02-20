@@ -163,6 +163,10 @@ let lastHealthCheckState = true; // true = healthy, false = unhealthy
 let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
 let lastTimeHealthy = Date.now() - healthCheckInterval;
 
+const HEALTH_CHECK_GRACE_PERIOD_MS = 10_000; // Grace period is the time since last CONFIRMED healthy, that we will still respond to checks as healthy
+const PUBLISHER_ALLOWABLE_SLOT_LAG = 10; // Expect the publisher to be receiving RPC responses within x slots of the slot subscriber
+const EXPECTED_MIN_PUBLISHER_DELAY_MS = 10_000; // Expect the publisher to be writing something at least once every x ms
+
 /**
  * Middleware that checks if we are in general healthy by checking that the bulk account loader slot
  * has changed recently.
@@ -174,10 +178,7 @@ let lastTimeHealthy = Date.now() - healthCheckInterval;
  * amount of time. This prevents reporting unhealthy even if we are just in the middle of a
  * bulk account load.
  */
-const handleHealthCheck = (
-	healthCheckGracePeriod: number,
-	slotSource: SlotSource
-) => {
+const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 	return async (_req: Request, res: Response, _next: NextFunction) => {
 		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
 			if (lastHealthCheckState) {
@@ -192,7 +193,7 @@ const handleHealthCheck = (
 		// healthy if slot has advanced since the last check
 		const lastSlotReceived = slotSource.getSlot();
 		const inGracePeriod =
-			Date.now() - lastTimeHealthy <= healthCheckGracePeriod;
+			Date.now() - lastTimeHealthy <= HEALTH_CHECK_GRACE_PERIOD_MS;
 		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
 		if (!lastHealthCheckState) {
 			logger.error(
@@ -213,7 +214,41 @@ const handleHealthCheck = (
 			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
 
 			res.writeHead(500);
-			res.end(`NOK`);
+			res.end(`NOK : unhealthy slot subscriber`);
+			return;
+		}
+
+		// # Check publisher health
+		const publisher = core.publisher;
+		const publisherHealthMetrics = await publisher.getHealthMetrics();
+
+		// # Check publisher is subscribed
+		if (!publisherHealthMetrics.isSubscribed) {
+			healthStatus = HEALTH_STATUS.LivenessTesting;
+			res.writeHead(500);
+			res.end(`NOK : publisher not subscribed`);
+			return;
+		}
+
+		// ## Check publisher is actively writing to redis
+		if (
+			Date.now() - publisherHealthMetrics.lastWriteTs >
+			EXPECTED_MIN_PUBLISHER_DELAY_MS
+		) {
+			healthStatus = HEALTH_STATUS.LivenessTesting;
+			res.writeHead(500);
+			res.end(`NOK : publisher write lag`);
+			return;
+		}
+
+		// ## Check publisher is receiving healthy RPC responses
+		if (
+			slotSource.getSlot() - publisherHealthMetrics.lastReceivedSlot >
+			PUBLISHER_ALLOWABLE_SLOT_LAG
+		) {
+			healthStatus = HEALTH_STATUS.LivenessTesting;
+			res.writeHead(500);
+			res.end(`NOK : publisher rpc slot lag`);
 			return;
 		}
 

@@ -15,5 +15,8 @@
 		"outDir": "./lib"
 	},
 	"include": ["src/**/*"],
+	"ts-node": {
+		"files": true // Makes ts-node work with the global declaration file
+	},
 	"exclude": ["node_modules"]
 }
