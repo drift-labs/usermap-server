@@ -64,10 +64,10 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@drift-labs/sdk@^2.64.0-beta.1":
-  version "2.64.0-beta.1"
-  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.64.0-beta.1.tgz#b1cf6263d7acaea32ef2c2dcb937417e211797f2"
-  integrity sha512-uzM1cKpMyk16eyKRSJiBn3Ru2qoGoGPtbmYxu45WnAYDb/0wxFwIjQPhZIX2pn4kAHtQwxSaV+hfMKeFNU9FbA==
+"@drift-labs/sdk@^2.76.0-beta.3":
+  version "2.76.0-beta.3"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.76.0-beta.3.tgz#af455900f1c052e7ffe714a6424276646ab1e85c"
+  integrity sha512-+B0fhFz47VAWZAsOPulWL5d2DlKsG5uFSx0LARy4z6f5CFEDOK7Eg2TtTUF1Mlgz3nmNthTJEM9cp8Y+SGjJcA==
   dependencies:
     "@coral-xyz/anchor" "0.28.1-beta.2"
     "@ellipsis-labs/phoenix-sdk" "^1.4.2"
@@ -77,6 +77,7 @@
     "@solana/web3.js" "1.73.2"
     strict-event-emitter-types "^2.0.0"
     uuid "^8.3.2"
+    zstddec "^0.1.0"
 
 "@ellipsis-labs/phoenix-sdk@^1.4.2":
   version "1.4.5"
@@ -4041,3 +4042,8 @@ yocto-queue@^0.1.0:
   version "0.1.0"
   resolved "https://registry.yarnpkg.com/yocto-queue/-/yocto-queue-0.1.0.tgz#0294eb3dee05028d31ee1a5fa2c556a6aaf10a1b"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
+
+zstddec@^0.1.0:
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/zstddec/-/zstddec-0.1.0.tgz#7050f3f0e0c3978562d0c566b3e5a427d2bad7ec"
+  integrity sha512-w2NTI8+3l3eeltKAdK8QpiLo/flRAr2p8AGeakfMZOXBxOg9HIu4LVDxBi81sYgVhFhdJjv1OrB5ssI8uFPoLg==
