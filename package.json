@@ -43,6 +43,7 @@
     "lodash": "^4.17.21",
     "morgan": "^1.10.0",
     "response-time": "^2.3.2",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zstddec": "^0.1.0"
   }
 }

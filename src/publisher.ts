@@ -5,6 +5,8 @@ import {
 	MemcmpFilter,
 	Context,
 	KeyedAccountInfo,
+	RpcResponseAndContext,
+	PublicKey,
 } from '@solana/web3.js';
 import { logger } from './utils/logger';
 import { AnchorProvider, Program } from '@coral-xyz/anchor';
@@ -27,6 +29,7 @@ import {
 } from '@drift-labs/sdk';
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
+import { ZSTDDecoder } from 'zstddec';
 
 require('dotenv').config();
 
@@ -35,6 +38,7 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -51,6 +55,8 @@ const logFormat =
 const logHttp = morgan(logFormat, {
 	skip: (_req, res) => res.statusCode <= 500,
 });
+
+const MAX_USER_ACCOUNT_SIZE_BYTES = 4376;
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -156,9 +162,90 @@ export class WebsocketCacheProgramAccountSubscriber {
 		};
 	}
 
+	async sync(): Promise<void> {
+		try {
+			const filters = [getUserFilter(), getNonIdleUserFilter()];
+
+			const rpcRequestArgs = [
+				this.program.programId,
+				{
+					commitment: 'confirmed',
+					filters,
+					encoding: 'base64+zstd',
+					withContext: true,
+				},
+			];
+
+			// @ts-ignore
+			const response = await this.program.provider.connection._rpcRequest(
+				'getProgramAccounts',
+				rpcRequestArgs
+			);
+
+			const rpcResponseAndContext: RpcResponseAndContext<
+				Array<{ pubkey: PublicKey; account: { data: [string, string] } }>
+			> = response.result;
+
+			const context = rpcResponseAndContext.context;
+
+			const programAccountBufferMap = new Map<string, Buffer>();
+
+			const decodingPromises = rpcResponseAndContext.value.map(
+				async (programAccount) => {
+					const compressedUserData = Buffer.from(
+						programAccount.account.data[0],
+						'base64'
+					);
+					const decoder = new ZSTDDecoder();
+					await decoder.init();
+					const userBuffer = decoder.decode(
+						compressedUserData,
+						MAX_USER_ACCOUNT_SIZE_BYTES
+					);
+					programAccountBufferMap.set(
+						programAccount.pubkey.toString(),
+						Buffer.from(userBuffer)
+					);
+				}
+			);
+
+			await Promise.all(decodingPromises);
+
+			const promises = Array.from(programAccountBufferMap.entries()).map(
+				([key, buffer]) =>
+					(async () => {
+						const keyedAccountInfo: KeyedAccountInfo = {
+							accountId: new PublicKey(key),
+							accountInfo: {
+								data: buffer,
+								executable: false,
+								owner: this.program.programId,
+								lamports: 0,
+							},
+						};
+
+						await this.handleRpcResponse(context, keyedAccountInfo);
+					})()
+			);
+
+			await Promise.all(promises);
+		} catch (e) {
+			const err = e as Error;
+			console.error(
+				`Error in WebsocketCacheProgramAccountSubscriber.sync(): ${err.message} ${err.stack ?? ''}`
+			);
+		}
+	}
+
 	async subscribe(): Promise<void> {
 		if (this.listenerId != null || this.isUnsubscribing) {
 			return;
+		}
+
+		if (SYNC_ON_STARTUP === 'true') {
+			const start = performance.now();
+			await this.sync();
+			console.log(`Sync took ${performance.now() - start}ms`);
 		}
 
 		this.listenerId = this.program.provider.connection.onProgramAccountChange(
