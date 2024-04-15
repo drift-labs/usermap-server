@@ -105,6 +105,8 @@ export class WebsocketCacheProgramAccountSubscriber {
 	lastReceivedSlot: number;
 	lastWriteTs: number;
 
+	decoder: ZSTDDecoder;
+
 	constructor(
 		program: Program,
 		redisClient: RedisClient,
@@ -118,6 +120,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		this.options = options;
 		this.resubTimeoutMs = resubTimeoutMs;
 		this.receivingData = false;
+		this.decoder = new ZSTDDecoder();
 	}
 
 	async handleRpcResponse(
@@ -196,9 +199,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 						programAccount.account.data[0],
 						'base64'
 					);
-					const decoder = new ZSTDDecoder();
-					await decoder.init();
-					const userBuffer = decoder.decode(
+					const userBuffer = this.decoder.decode(
 						compressedUserData,
 						MAX_USER_ACCOUNT_SIZE_BYTES
 					);
@@ -238,6 +239,8 @@ export class WebsocketCacheProgramAccountSubscriber {
 	}
 
 	async subscribe(): Promise<void> {
+		await this.decoder.init();
+
 		if (this.listenerId != null || this.isUnsubscribing) {
 			return;
 		}
