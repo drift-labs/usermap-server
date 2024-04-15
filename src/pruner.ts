@@ -1,4 +1,10 @@
-import { BulkAccountLoader, DriftClient, DriftEnv, UserMap, Wallet } from '@drift-labs/sdk';
+import {
+	BulkAccountLoader,
+	DriftClient,
+	DriftEnv,
+	UserMap,
+	Wallet,
+} from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
@@ -32,8 +38,8 @@ async function main() {
 		env: driftEnv,
 		accountSubscription: {
 			type: 'polling',
-			accountLoader: new BulkAccountLoader(connection, 'finalized', 0)
-		}
+			accountLoader: new BulkAccountLoader(connection, 'finalized', 0),
+		},
 	});
 	await driftClient.subscribe();
 
@@ -48,7 +54,7 @@ async function main() {
 			commitment: 'finalized',
 		},
 	});
-	await userMap.subscribe();
+	await userMap.sync();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
