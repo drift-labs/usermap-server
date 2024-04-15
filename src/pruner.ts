@@ -48,7 +48,7 @@ async function main() {
 			commitment: 'finalized',
 		},
 	});
-	await userMap.subscribe();
+	await userMap.sync();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
