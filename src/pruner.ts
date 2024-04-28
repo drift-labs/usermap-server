@@ -56,6 +56,10 @@ async function main() {
 	});
 	await userMap.sync();
 
+	if (userMap.size() === 0) {
+		throw new Error('UserMap size cant be 0');
+	}
+
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
