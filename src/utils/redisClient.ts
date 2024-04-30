@@ -4,17 +4,33 @@ import { sleep } from './utils';
 export const getRedisClient = (
 	host?: string,
 	port?: string,
-	password?: string,
 	db?: number,
 	opts?: RedisOptions
 ): Redis => {
 	if (host && port) {
 		console.log(`Connecting to configured redis:: ${host}:${port}`);
 
+		const getTlsConfiguration = () => {
+			if (
+				process.env.RUNNING_LOCAL === 'true' &&
+				process.env.LOCAL_CACHE === 'true'
+			) {
+				return undefined;
+			}
+			if (process.env.RUNNING_LOCAL === 'true') {
+				return {
+					checkServerIdentity: () => {
+						return undefined;
+					},
+				};
+			}
+			return {};
+		};
+
 		const redisClient = new Redis({
 			host: host,
 			port: parseInt(port, 10),
-			password: password,
+			db,
 			...(opts ?? {}),
 			retryStrategy: (times) => {
 				const delay = Math.min(times * 1000, 10000);
@@ -33,7 +49,8 @@ export const getRedisClient = (
 				}
 				return false;
 			},
-			maxRetriesPerRequest: null, // unlimited retries
+			maxRetriesPerRequest: null,
+			tls: getTlsConfiguration(),
 		});
 
 		redisClient.on('connect', () => {
@@ -69,14 +86,8 @@ export class RedisClient {
 
 	connectionPromise: Promise<void> | undefined;
 
-	constructor(
-		host?: string,
-		port?: string,
-		password?: string,
-		db?: number,
-		opts?: RedisOptions
-	) {
-		this.client = getRedisClient(host, port, password, db, opts);
+	constructor(host?: string, port?: string, db?: number, opts?: RedisOptions) {
+		this.client = getRedisClient(host, port, db, opts);
 	}
 
 	/**

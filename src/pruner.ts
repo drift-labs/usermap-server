@@ -14,9 +14,8 @@ require('dotenv').config();
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const REDIS_HOST = process.env.ELASTICACHE_HOST || 'localhost';
+const REDIS_PORT = process.env.ELASTICACHE_PORT || '6379';
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -60,7 +59,7 @@ async function main() {
 		throw new Error('UserMap size cant be 0');
 	}
 
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT);
 	await redisClient.connect();
 
 	// Fetch the userMap and prune the redis cache from idle users
