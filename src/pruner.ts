@@ -56,6 +56,12 @@ async function main() {
 	});
 	await userMap.sync();
 
+	logger.info('Pruning idle users...');
+	logger.info(`UserMap size: ${userMap.size()}`);
+	if (userMap.size() === 0) {
+		throw new Error('UserMap size cant be 0');
+	}
+
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
