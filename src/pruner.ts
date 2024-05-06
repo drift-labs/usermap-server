@@ -6,18 +6,20 @@ import {
 	getNonIdleUserFilter,
 	getUserFilter,
 } from '@drift-labs/sdk';
+import { RedisClient, RedisClientType } from '@drift/common';
 import { Connection, Keypair, RpcResponseAndContext } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
-import { RedisClient } from './utils/redisClient';
 import bs58 from 'bs58';
 
 require('dotenv').config();
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 
-const REDIS_HOST = process.env.ELASTICACHE_HOST || 'localhost';
-const REDIS_PORT = process.env.ELASTICACHE_PORT || '6379';
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT || '6379';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const USE_ELASTICACHE = process.env.ELASTICACHE || false;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -85,16 +87,26 @@ async function main() {
 
 	console.log(`Number of idle users: ${idleUsers.size}`);
 
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT);
+	console.log(USE_ELASTICACHE)
+
+	const redisClient = USE_ELASTICACHE
+		? new RedisClient({ db: RedisClientType.USER_MAP })
+		: new RedisClient({
+				host: REDIS_HOST,
+				port: REDIS_PORT,
+				db: 0,
+				opts: { password: REDIS_PASSWORD },
+			});
+
 	await redisClient.connect();
 
-	const userList = await redisClient.client.lrange('user_pubkeys', 0, -1);
+	const userList = await redisClient.lRange('user_pubkeys', 0, -1);
 	const idleUserInCache = userList.filter((item) => idleUsers.has(item));
 
 	for (const key of idleUserInCache) {
 		console.log(`Pruning user: ${key}`);
-		await redisClient.client.del(key);
-		await redisClient.client.lrem('user_pubkeys', 0, key);
+		await redisClient.delete(key);
+		await redisClient.lRem('user_pubkeys', 0, key);
 	}
 
 	redisClient.disconnect();
