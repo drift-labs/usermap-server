@@ -38,7 +38,7 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-const USE_ELASTICACHE = process.env.ELASTICACHE || false;
+const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
 
