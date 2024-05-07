@@ -87,8 +87,6 @@ async function main() {
 
 	console.log(`Number of idle users: ${idleUsers.size}`);
 
-	console.log(USE_ELASTICACHE)
-
 	const redisClient = USE_ELASTICACHE
 		? new RedisClient({ db: RedisClientType.USER_MAP })
 		: new RedisClient({
