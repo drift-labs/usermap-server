@@ -29,7 +29,7 @@ import {
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
-import { RedisClient, RedisClientType } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 require('dotenv').config();
 
@@ -326,11 +326,13 @@ async function main() {
 	const program = driftClient.program;
 
 	const redisClient = USE_ELASTICACHE
-		? new RedisClient({ db: RedisClientType.USER_MAP })
+		? new RedisClient({
+				prefix: RedisClientPrefix.USER_MAP,
+			})
 		: new RedisClient({
 				host: REDIS_HOST,
 				port: REDIS_PORT,
-				db: 0,
+				cluster: false,
 				opts: { password: REDIS_PASSWORD },
 			});
 

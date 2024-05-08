@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@drift/common": "file:./drift-common/common-ts",
-    "@drift-labs/sdk": "^2.78.0-beta.0",
+		"@drift-labs/sdk": "file:./drift-common/protocol/sdk",
     "@opentelemetry/api": "^1.1.0",
     "@opentelemetry/auto-instrumentations-node": "^0.31.1",
     "@opentelemetry/exporter-prometheus": "^0.31.0",

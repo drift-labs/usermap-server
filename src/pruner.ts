@@ -6,7 +6,7 @@ import {
 	getNonIdleUserFilter,
 	getUserFilter,
 } from '@drift-labs/sdk';
-import { RedisClient, RedisClientType } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 import { Connection, Keypair, RpcResponseAndContext } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
@@ -19,7 +19,7 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-const USE_ELASTICACHE = process.env.ELASTICACHE || false;
+const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -88,11 +88,13 @@ async function main() {
 	console.log(`Number of idle users: ${idleUsers.size}`);
 
 	const redisClient = USE_ELASTICACHE
-		? new RedisClient({ db: RedisClientType.USER_MAP })
+		? new RedisClient({
+				prefix: RedisClientPrefix.USER_MAP,
+			})
 		: new RedisClient({
 				host: REDIS_HOST,
 				port: REDIS_PORT,
-				db: 0,
+				cluster: false,
 				opts: { password: REDIS_PASSWORD },
 			});
 
