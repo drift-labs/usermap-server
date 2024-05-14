@@ -95,7 +95,7 @@ async function main() {
 				host: REDIS_HOST,
 				port: REDIS_PORT,
 				cluster: false,
-				opts: { password: REDIS_PASSWORD },
+				opts: { password: REDIS_PASSWORD, tls: null },
 			});
 
 	await redisClient.connect();
