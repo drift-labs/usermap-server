@@ -81,6 +81,7 @@ async function main() {
 		idleUsers.add(programAccount.pubkey.toString());
 	});
 
+	logger.info('Pruning idle users...');
 	if (idleUsers.size === 0) {
 		throw new Error('UserMap size cant be 0');
 	}

@@ -316,7 +316,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 async function main() {
 	// Set up drift client for the program
-	const connection = new Connection(endpoint, 'recent');
+	const connection = new Connection(endpoint, 'confirmed');
 	const wallet = new Wallet(new Keypair());
 	const driftClient = new DriftClient({
 		connection,
