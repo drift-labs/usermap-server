@@ -135,7 +135,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 		const existingData = (await this.redisClient.getRaw(
 			keyedAccountInfo.accountId.toString()
-		)) as string;
+		));
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
 			await this.redisClient.setRaw(
