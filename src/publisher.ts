@@ -149,7 +149,10 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 		const existingSlot = existingData.split('::')[0];
-		if (incomingSlot >= parseInt(existingSlot)) {
+		if (
+			incomingSlot >= parseInt(existingSlot) ||
+			isNaN(parseInt(existingSlot))
+		) {
 			this.lastWriteTs = Date.now();
 			await this.redisClient.setRaw(
 				keyedAccountInfo.accountId.toString(),
