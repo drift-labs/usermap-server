@@ -133,9 +133,9 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 		this.lastReceivedSlot = incomingSlot;
 
-		const existingData = (await this.redisClient.getRaw(
+		const existingData = await this.redisClient.getRaw(
 			keyedAccountInfo.accountId.toString()
-		));
+		);
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
 			await this.redisClient.setRaw(
