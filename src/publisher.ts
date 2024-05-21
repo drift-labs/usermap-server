@@ -138,7 +138,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		);
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.set(
+			await this.redisClient.setRaw(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
@@ -149,9 +149,12 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 		const existingSlot = existingData.split('::')[0];
-		if (incomingSlot >= parseInt(existingSlot)) {
+		if (
+			incomingSlot >= parseInt(existingSlot) ||
+			isNaN(parseInt(existingSlot))
+		) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.set(
+			await this.redisClient.setRaw(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
