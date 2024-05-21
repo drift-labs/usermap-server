@@ -1,16 +1,14 @@
 import {
+	BulkAccountLoader,
 	DriftClient,
 	DriftEnv,
-	PublicKey,
+	UserMap,
 	Wallet,
-	getNonIdleUserFilter,
-	getUserFilter,
 } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
-import { Connection, Keypair, RpcResponseAndContext } from '@solana/web3.js';
+import { Connection, Keypair } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
-import bs58 from 'bs58';
+import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
 
@@ -19,7 +17,6 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -32,85 +29,69 @@ logger.info(`WS endpoint:        ${wsEndpoint}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
 
 async function main() {
+	// Set up drift client for the program
 	const connection = new Connection(endpoint, 'recent');
 	const wallet = new Wallet(new Keypair());
 	const driftClient = new DriftClient({
 		connection,
 		wallet,
 		env: driftEnv,
-	});
-
-	const program = driftClient.program;
-
-	const {
-		memcmp: { offset },
-	} = getNonIdleUserFilter();
-
-	const idleUserFilter = {
-		memcmp: {
-			offset,
-			bytes: bs58.encode(Uint8Array.from([1])),
+		accountSubscription: {
+			type: 'polling',
+			accountLoader: new BulkAccountLoader(connection, 'finalized', 0),
 		},
-	};
-
-	const filters = [getUserFilter(), idleUserFilter];
-
-	const rpcRequestArgs = [
-		program.programId,
-		{
-			commitment: 'confirmed',
-			filters,
-			encoding: 'base64+zstd',
-			withContext: true,
-		},
-	];
-
-	// @ts-ignore
-	const response = await program.provider.connection._rpcRequest(
-		'getProgramAccounts',
-		rpcRequestArgs
-	);
-
-	const rpcResponseAndContext: RpcResponseAndContext<
-		Array<{ pubkey: PublicKey; account: { data: [string, string] } }>
-	> = response.result;
-
-	const idleUsers = new Set<string>();
-
-	rpcResponseAndContext.value.map(async (programAccount) => {
-		idleUsers.add(programAccount.pubkey.toString());
 	});
+	await driftClient.subscribe();
+
+	const userMap = new UserMap({
+		driftClient,
+		connection,
+		includeIdle: false,
+		fastDecode: true,
+		subscriptionConfig: {
+			type: 'polling',
+			frequency: 0,
+			commitment: 'finalized',
+		},
+	});
+	await userMap.sync();
 
 	logger.info('Pruning idle users...');
-	if (idleUsers.size === 0) {
+	logger.info(`UserMap size: ${userMap.size()}`);
+	if (userMap.size() === 0) {
 		throw new Error('UserMap size cant be 0');
 	}
 
-	console.log(`Number of idle users: ${idleUsers.size}`);
-
-	const redisClient = USE_ELASTICACHE
-		? new RedisClient({
-				prefix: RedisClientPrefix.USER_MAP,
-			})
-		: new RedisClient({
-				host: REDIS_HOST,
-				port: REDIS_PORT,
-				cluster: false,
-				opts: { password: REDIS_PASSWORD, tls: null },
-			});
-
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
-	const userList = await redisClient.lRange('user_pubkeys', 0, -1);
-	const idleUserInCache = userList.filter((item) => idleUsers.has(item));
+	// Fetch the userMap and prune the redis cache from idle users
+	let cursor = '0';
+	do {
+		const reply = await redisClient.client.scan(
+			cursor,
+			'MATCH',
+			'*',
+			'COUNT',
+			100
+		);
+		cursor = reply[0];
+		const keys = reply[1];
 
-	for (const key of idleUserInCache) {
-		console.log(`Pruning user: ${key}`);
-		await redisClient.delete(key);
-		await redisClient.lRem('user_pubkeys', 0, key);
-	}
+		// Process the keys
+		for (const key of keys) {
+			if (key == 'user_pubkeys') continue;
+			if (userMap.get(key) === undefined) {
+				console.log(`Pruning idle or deleted user: ${key}`);
+				await redisClient.client.del(key);
+				await redisClient.client.lrem('user_pubkeys', 0, key);
+			}
+		}
+	} while (cursor !== '0');
 
 	redisClient.disconnect();
+	await driftClient.unsubscribe();
+	await userMap.unsubscribe();
 
 	console.log('Done!!');
 	process.exit(0);

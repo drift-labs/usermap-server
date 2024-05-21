@@ -18,6 +18,7 @@ import compression from 'compression';
 import * as http from 'http';
 import { runtimeSpecsGauge } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
+import { RedisClient } from './utils/redisClient';
 import {
 	DriftClient,
 	DriftEnv,
@@ -29,7 +30,6 @@ import {
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 require('dotenv').config();
 
@@ -38,8 +38,6 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
-
 const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
 
 const endpoint = process.env.ENDPOINT!;
@@ -133,16 +131,16 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 		this.lastReceivedSlot = incomingSlot;
 
-		const existingData = await this.redisClient.getRaw(
+		const existingData = await this.redisClient.client.get(
 			keyedAccountInfo.accountId.toString()
 		);
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.set(
+			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
-			await this.redisClient.rPush(
+			await this.redisClient.client.rpush(
 				'user_pubkeys',
 				keyedAccountInfo.accountId.toString()
 			);
@@ -151,7 +149,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		const existingSlot = existingData.split('::')[0];
 		if (incomingSlot >= parseInt(existingSlot)) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.set(
+			await this.redisClient.client.set(
 				keyedAccountInfo.accountId.toString(),
 				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 			);
@@ -325,17 +323,7 @@ async function main() {
 	});
 	const program = driftClient.program;
 
-	const redisClient = USE_ELASTICACHE
-		? new RedisClient({
-				prefix: RedisClientPrefix.USER_MAP,
-			})
-		: new RedisClient({
-				host: REDIS_HOST,
-				port: REDIS_PORT,
-				cluster: false,
-				opts: { password: REDIS_PASSWORD, tls: null },
-			});
-
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	const filters = [getUserFilter(), getNonIdleUserFilter()];
 	const subscriber = new WebsocketCacheProgramAccountSubscriber(
 		program,
