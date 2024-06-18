@@ -341,6 +341,7 @@ async function main() {
 
 	const filters = [getUserFilter(), getNonIdleUserFilter()];
 	const subscriber = new WebsocketCacheProgramAccountSubscriber(
+		//@ts-ignore
 		program,
 		redisClient,
 		{ filters, commitment: 'confirmed' },
