@@ -251,9 +251,12 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 
-		const syncInterval = setInterval(async () => {
-			await this.sync();
-		}, 60_000);
+		const syncInterval = setInterval(
+			async () => {
+				await this.sync();
+			},
+			parseInt(process.env.SYNC_INTERVAL) ?? 90_000
+		);
 		this.syncInterval = syncInterval;
 
 		if (SYNC_ON_STARTUP === 'true') {
