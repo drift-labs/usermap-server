@@ -29,8 +29,8 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@drift-labs/sdk": "file:./drift-common/protocol/sdk",
     "@drift/common": "file:./drift-common/common-ts",
-		"@drift-labs/sdk": "file:./drift-common/protocol/sdk",
     "@opentelemetry/api": "^1.1.0",
     "@opentelemetry/auto-instrumentations-node": "^0.31.1",
     "@opentelemetry/exporter-prometheus": "^0.31.0",
@@ -44,6 +44,7 @@
     "lodash": "^4.17.21",
     "morgan": "^1.10.0",
     "response-time": "^2.3.2",
+    "undici": "^6.19.5",
     "winston": "^3.11.0",
     "zstddec": "^0.1.0"
   }

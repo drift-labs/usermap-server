@@ -30,6 +30,13 @@ import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 
