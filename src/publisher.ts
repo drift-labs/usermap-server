@@ -30,6 +30,13 @@ import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 
@@ -96,6 +103,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 	redisClient: RedisClient;
 	listenerId: number | undefined;
 	options: { filters: MemcmpFilter[]; commitment?: Commitment };
+	syncInterval: NodeJS.Timeout | undefined;
 
 	// For reconnection
 	isUnsubscribing = false;
@@ -250,6 +258,15 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 
+		
+		const syncInterval = setInterval(
+			async () => {
+				await this.sync();
+			},
+			parseInt(process.env.SYNC_INTERVAL) || 90_000
+		);
+		this.syncInterval = syncInterval;
+
 		if (SYNC_ON_STARTUP === 'true') {
 			const start = performance.now();
 			await this.sync();
@@ -297,6 +314,9 @@ export class WebsocketCacheProgramAccountSubscriber {
 	async unsubscribe(onResub = false): Promise<void> {
 		if (!onResub) {
 			this.resubTimeoutMs = undefined;
+			if (this.syncInterval) {
+				clearInterval(this.syncInterval);
+			}
 		}
 		this.isUnsubscribing = true;
 		clearTimeout(this.timeoutId);
@@ -341,6 +361,7 @@ async function main() {
 
 	const filters = [getUserFilter(), getNonIdleUserFilter()];
 	const subscriber = new WebsocketCacheProgramAccountSubscriber(
+		//@ts-ignore
 		program,
 		redisClient,
 		{ filters, commitment: 'confirmed' },
