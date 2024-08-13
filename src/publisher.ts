@@ -21,7 +21,6 @@ import { handleResponseTime } from './core/middleware';
 import {
 	DriftClient,
 	DriftEnv,
-	SlotSubscriber,
 	Wallet,
 	getNonIdleUserFilter,
 	getUserFilter,
@@ -383,18 +382,12 @@ async function main() {
 		30_000
 	);
 
-	const slotSubscriber = new SlotSubscriber(connection, {
-		resubTimeoutMs: 2_000,
-	});
-	await slotSubscriber.subscribe();
-
 	const core: Core = {
 		app,
 		connection,
 		wallet,
 		driftClient,
 		redisClient,
-		slotSubscriber,
 		publisher: subscriber,
 	};
 

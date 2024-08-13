@@ -1,6 +1,6 @@
 import { Express } from 'express';
 import { Connection, Wallet } from '@solana/web3.js';
-import { DriftClient, SlotSubscriber } from '@drift-labs/sdk';
+import { DriftClient } from '@drift-labs/sdk';
 import { RedisClient } from './utils/redisClient';
 import { WebsocketCacheProgramAccountSubscriber } from '../publisher';
 
@@ -11,7 +11,6 @@ export declare global {
 		wallet: Wallet;
 		driftClient: DriftClient;
 		redisClient: RedisClient;
-		slotSubscriber: SlotSubscriber;
 		publisher: WebsocketCacheProgramAccountSubscriber;
 	};
 }
