@@ -212,7 +212,7 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 
 		if (!lastHealthCheckState && !inGracePeriod) {
 			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
-
+			logger.error('unhealthy slot subscriber')
 			res.writeHead(500);
 			res.end(`NOK : unhealthy slot subscriber`);
 			return;
@@ -225,6 +225,7 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 		// # Check publisher is subscribed
 		if (!publisherHealthMetrics.isSubscribed) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
+			logger.error('publisher not subscribed')
 			res.writeHead(500);
 			res.end(`NOK : publisher not subscribed`);
 			return;
@@ -236,6 +237,7 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 			EXPECTED_MIN_PUBLISHER_DELAY_MS
 		) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
+			logger.error('publisher write lag')
 			res.writeHead(500);
 			res.end(`NOK : publisher write lag`);
 			return;
@@ -247,6 +249,7 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 			PUBLISHER_ALLOWABLE_SLOT_LAG
 		) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
+			logger.error('publisher rpc slot lag')
 			res.writeHead(500);
 			res.end(`NOK : publisher rpc slot lag`);
 			return;
