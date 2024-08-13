@@ -260,11 +260,11 @@ export class WebsocketCacheProgramAccountSubscriber {
 			console.error(
 				`Error in WebsocketCacheProgramAccountSubscriber.sync(): ${err.message} ${err.stack ?? ''}`
 			);
+		} finally {
+			this.syncLock = false;
+			logger.info('Releasing sync lock');
+			logger.info(`Sync took ${performance.now() - start}ms`);
 		}
-
-		this.syncLock = false;
-		logger.info('Releasing sync lock');
-		logger.info(`Sync took ${performance.now() - start}ms`);
 	}
 
 	async subscribe(): Promise<void> {
