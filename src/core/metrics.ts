@@ -194,7 +194,7 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 		const lastSlotReceived = slotSource.getSlot();
 		const inGracePeriod =
 			Date.now() - lastTimeHealthy <= HEALTH_CHECK_GRACE_PERIOD_MS;
-		lastHealthCheckState = lastSlotReceived >= lastHealthCheckSlot;
+		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
 		if (!lastHealthCheckState) {
 			logger.error(
 				`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
