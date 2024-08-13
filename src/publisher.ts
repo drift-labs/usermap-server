@@ -104,6 +104,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 	listenerId: number | undefined;
 	options: { filters: MemcmpFilter[]; commitment?: Commitment };
 	syncInterval: NodeJS.Timeout | undefined;
+	syncLock: boolean;
 
 	// For reconnection
 	isUnsubscribing = false;
@@ -179,7 +180,18 @@ export class WebsocketCacheProgramAccountSubscriber {
 	}
 
 	async sync(): Promise<void> {
+		const start = performance.now();
+
 		try {
+			if (this.syncLock) {
+				logger.info('SYNC LOCKED');
+				return;
+			}
+
+			logger.info('Running Sync');
+
+			this.syncLock = true;
+
 			const filters = [getUserFilter(), getNonIdleUserFilter()];
 
 			const rpcRequestArgs = [
@@ -225,6 +237,8 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await Promise.all(decodingPromises);
 
+			logger.info(`${programAccountBufferMap.size} users to sync`);
+
 			const promises = Array.from(programAccountBufferMap.entries()).map(
 				([key, buffer]) =>
 					(async () => {
@@ -237,11 +251,9 @@ export class WebsocketCacheProgramAccountSubscriber {
 								lamports: 0,
 							},
 						};
-
 						await this.handleRpcResponse(context, keyedAccountInfo);
 					})()
 			);
-
 			await Promise.all(promises);
 		} catch (e) {
 			const err = e as Error;
@@ -249,6 +261,10 @@ export class WebsocketCacheProgramAccountSubscriber {
 				`Error in WebsocketCacheProgramAccountSubscriber.sync(): ${err.message} ${err.stack ?? ''}`
 			);
 		}
+
+		this.syncLock = false;
+		logger.info('Releasing sync lock');
+		logger.info(`Sync took ${performance.now() - start}ms`);
 	}
 
 	async subscribe(): Promise<void> {
@@ -258,19 +274,18 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 
-		
 		const syncInterval = setInterval(
 			async () => {
+				logger.info('Syncing on interval');
 				await this.sync();
 			},
 			parseInt(process.env.SYNC_INTERVAL) || 90_000
 		);
+
 		this.syncInterval = syncInterval;
 
 		if (SYNC_ON_STARTUP === 'true') {
-			const start = performance.now();
 			await this.sync();
-			console.log(`Sync took ${performance.now() - start}ms`);
 		}
 
 		this.listenerId = this.program.provider.connection.onProgramAccountChange(
@@ -303,7 +318,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 			}
 
 			if (this.receivingData) {
-				console.log(`No ws data in ${this.resubTimeoutMs}ms, resubscribing`);
+				logger.info(`No ws data in ${this.resubTimeoutMs}ms, resubscribing`);
 				await this.unsubscribe(true);
 				this.receivingData = false;
 				await this.subscribe();
