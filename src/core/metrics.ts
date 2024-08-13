@@ -7,7 +7,6 @@ import {
 	MeterProvider,
 	View,
 } from '@opentelemetry/sdk-metrics-base';
-import { SlotSource } from '@drift-labs/sdk';
 import { NextFunction, Request, Response } from 'express';
 
 /**
@@ -164,7 +163,6 @@ let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
 let lastTimeHealthy = Date.now() - healthCheckInterval;
 
 const HEALTH_CHECK_GRACE_PERIOD_MS = 10_000; // Grace period is the time since last CONFIRMED healthy, that we will still respond to checks as healthy
-const PUBLISHER_ALLOWABLE_SLOT_LAG = 10; // Expect the publisher to be receiving RPC responses within x slots of the slot subscriber
 const EXPECTED_MIN_PUBLISHER_DELAY_MS = 10_000; // Expect the publisher to be writing something at least once every x ms
 
 /**
@@ -178,23 +176,18 @@ const EXPECTED_MIN_PUBLISHER_DELAY_MS = 10_000; // Expect the publisher to be wr
  * amount of time. This prevents reporting unhealthy even if we are just in the middle of a
  * bulk account load.
  */
-const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
+const handleHealthCheck = (core: Core) => {
 	return async (_req: Request, res: Response, _next: NextFunction) => {
-		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
-			if (lastHealthCheckState) {
-				res.writeHead(200);
-				res.end('OK');
-				lastHealthCheckPerformed = Date.now();
-				return;
-			}
-			// always check if last check was unhealthy (give it another chance to recover)
-		}
+		const publisher = core.publisher;
+		const publisherHealthMetrics = await publisher.getHealthMetrics();
 
 		// healthy if slot has advanced since the last check
-		const lastSlotReceived = slotSource.getSlot();
+		const lastSlotReceived = publisherHealthMetrics.lastReceivedSlot;
 		const inGracePeriod =
 			Date.now() - lastTimeHealthy <= HEALTH_CHECK_GRACE_PERIOD_MS;
+
 		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
+
 		if (!lastHealthCheckState) {
 			logger.error(
 				`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
@@ -207,53 +200,39 @@ const handleHealthCheck = (slotSource: SlotSource, core: Core) => {
 			lastTimeHealthy = Date.now();
 		}
 
-		lastHealthCheckSlot = lastSlotReceived;
 		lastHealthCheckPerformed = Date.now();
 
-		if (!lastHealthCheckState && !inGracePeriod) {
-			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
-			logger.error('unhealthy slot subscriber')
-			res.writeHead(500);
-			res.end(`NOK : unhealthy slot subscriber`);
-			return;
-		}
-
-		// # Check publisher health
-		const publisher = core.publisher;
-		const publisherHealthMetrics = await publisher.getHealthMetrics();
-
-		// # Check publisher is subscribed
+		// Check publisher is subscribed
 		if (!publisherHealthMetrics.isSubscribed) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
-			logger.error('publisher not subscribed')
+			logger.error('publisher not subscribed');
 			res.writeHead(500);
 			res.end(`NOK : publisher not subscribed`);
 			return;
 		}
 
-		// ## Check publisher is actively writing to redis
+		// Check publisher is actively writing to redis
 		if (
 			Date.now() - publisherHealthMetrics.lastWriteTs >
 			EXPECTED_MIN_PUBLISHER_DELAY_MS
 		) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
-			logger.error('publisher write lag')
+			logger.error('publisher write lag');
 			res.writeHead(500);
 			res.end(`NOK : publisher write lag`);
 			return;
 		}
 
-		// ## Check publisher is receiving healthy RPC responses
-		if (
-			slotSource.getSlot() - publisherHealthMetrics.lastReceivedSlot >
-			PUBLISHER_ALLOWABLE_SLOT_LAG
-		) {
+		// Check that the slot is increasing
+		if (!lastHealthCheckState) {
 			healthStatus = HEALTH_STATUS.LivenessTesting;
-			logger.error('publisher rpc slot lag')
+			logger.error('publisher rpc slot lag');
 			res.writeHead(500);
 			res.end(`NOK : publisher rpc slot lag`);
 			return;
 		}
+
+		lastHealthCheckSlot = lastSlotReceived;
 
 		healthStatus = HEALTH_STATUS.Ok;
 		res.writeHead(200);
