@@ -74,7 +74,10 @@ async function main() {
 		const keys = reply[1];
 
 		// Process the keys
-		for (const key of keys) {
+		for (let key of keys) {
+			if (key.includes(':')) {
+				key = key.split(':').at(-1);
+			}
 			if (key == 'user_pubkeys') continue;
 			if (userMap.get(key) === undefined) {
 				console.log(`Pruning idle or deleted user: ${key}`);
