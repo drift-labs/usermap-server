@@ -47,6 +47,8 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
+const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 90_000
+const EXPIRY_MULTIPLIER = 4;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -144,27 +146,29 @@ export class WebsocketCacheProgramAccountSubscriber {
 		const existingData = await this.redisClient.getRaw(
 			keyedAccountInfo.accountId.toString()
 		);
+		
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.setRaw(
+		
+			await this.redisClient.forceGetClient().setex(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
-			);
-			await this.redisClient.rPush(
-				'user_pubkeys',
-				keyedAccountInfo.accountId.toString()
+				SYNC_INTERVAL * EXPIRY_MULTIPLIER / 1000,
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`,
 			);
 			return;
 		}
+		
 		const existingSlot = existingData.split('::')[0];
+		
 		if (
 			incomingSlot >= parseInt(existingSlot) ||
 			isNaN(parseInt(existingSlot))
 		) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.setRaw(
+			await this.redisClient.forceGetClient().setex(
 				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
+				SYNC_INTERVAL * EXPIRY_MULTIPLIER / 1000,
+				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`,
 			);
 			return;
 		}
@@ -236,7 +240,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await Promise.all(decodingPromises);
 
-			logger.info(`${programAccountBufferMap.size} users to sync`);
+			logger.info(`${programAccountBufferMap.size} users to sync`);			
 
 			const promises = Array.from(programAccountBufferMap.entries()).map(
 				([key, buffer]) =>
@@ -253,7 +257,14 @@ export class WebsocketCacheProgramAccountSubscriber {
 						await this.handleRpcResponse(context, keyedAccountInfo);
 					})()
 			);
+
 			await Promise.all(promises);
+
+			await this.redisClient.lTrim('user_pubkeys', -1, 0);
+			await this.redisClient.forceGetClient().rpush(
+				'user_pubkeys',
+				...Array.from(programAccountBufferMap.keys())
+			);
 		} catch (e) {
 			const err = e as Error;
 			console.error(
@@ -278,7 +289,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 				logger.info('Syncing on interval');
 				await this.sync();
 			},
-			parseInt(process.env.SYNC_INTERVAL) || 90_000
+			SYNC_INTERVAL
 		);
 
 		this.syncInterval = syncInterval;
