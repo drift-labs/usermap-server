@@ -16,7 +16,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 
 import * as http from 'http';
-import { runtimeSpecsGauge, updateUserPubkeyListLength } from './core/metrics';
+import { updateUserPubkeyListLength } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
 	DriftClient,
@@ -74,18 +74,6 @@ app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
 app.use(handleResponseTime);
-
-// Metrics defined here
-const bootTimeMs = Date.now();
-const commitHash = process.env.COMMIT;
-runtimeSpecsGauge.addCallback((obs) => {
-	obs.observe(bootTimeMs, {
-		commit: commitHash,
-		driftEnv,
-		rpcEndpoint: endpoint,
-		wsEndpoint: wsEndpoint,
-	});
-});
 
 const server = http.createServer(app);
 
