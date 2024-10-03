@@ -1,16 +1,8 @@
-import {
-	DriftClient,
-	DriftEnv,
-	PublicKey,
-	Wallet,
-	getNonIdleUserFilter,
-	getUserFilter,
-} from '@drift-labs/sdk';
+import { DriftClient, DriftEnv, UserMap, Wallet } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
-import { Connection, Keypair, RpcResponseAndContext } from '@solana/web3.js';
+import { Connection, Keypair } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
-import bs58 from 'bs58';
 
 require('dotenv').config();
 
@@ -39,54 +31,24 @@ async function main() {
 		wallet,
 		env: driftEnv,
 	});
+	await driftClient.subscribe();
 
-	const program = driftClient.program;
-
-	const {
-		memcmp: { offset },
-	} = getNonIdleUserFilter();
-
-	const idleUserFilter = {
-		memcmp: {
-			offset,
-			bytes: bs58.encode(Uint8Array.from([1])),
+	const userMap = new UserMap({
+		driftClient,
+		connection,
+		includeIdle: false,
+		fastDecode: true,
+		subscriptionConfig: {
+			type: 'polling',
+			frequency: 0,
+			commitment: 'finalized',
 		},
-	};
-
-	const filters = [getUserFilter(), idleUserFilter];
-
-	const rpcRequestArgs = [
-		program.programId,
-		{
-			commitment: 'confirmed',
-			filters,
-			encoding: 'base64+zstd',
-			withContext: true,
-		},
-	];
-
-	// @ts-ignore
-	const response = await program.provider.connection._rpcRequest(
-		'getProgramAccounts',
-		rpcRequestArgs
-	);
-
-	const rpcResponseAndContext: RpcResponseAndContext<
-		Array<{ pubkey: PublicKey; account: { data: [string, string] } }>
-	> = response.result;
-
-	const idleUsers = new Set<string>();
-
-	rpcResponseAndContext.value.map(async (programAccount) => {
-		idleUsers.add(programAccount.pubkey.toString());
 	});
+	await userMap.sync();
 
-	logger.info('Pruning idle users...');
-	if (idleUsers.size === 0) {
+	if (userMap.size() === 0) {
 		throw new Error('UserMap size cant be 0');
 	}
-
-	console.log(`Number of idle users: ${idleUsers.size}`);
 
 	const redisClient = USE_ELASTICACHE
 		? new RedisClient({
@@ -101,17 +63,34 @@ async function main() {
 
 	await redisClient.connect();
 
-	const userList = await redisClient.lRange('user_pubkeys', 0, -1);
-	const idleUserInCache = userList.filter((item) => idleUsers.has(item));
+	// Fetch the userMap and prune the redis cache from idle users
+	let cursor = '0';
+	let numIdleUsers = 0;
+	do {
+		const reply = await redisClient
+			.forceGetClient()
+			.scan(cursor, 'MATCH', '*', 'COUNT', 100);
+		cursor = reply[0];
+		const keys = reply[1];
 
-	for (const key of idleUserInCache) {
-		console.log(`Pruning user: ${key}`);
-		await redisClient.delete(key);
-		await redisClient.lRem('user_pubkeys', 0, key);
-	}
+		// Process the keys
+		for (let key of keys) {
+			if (key.includes(':')) {
+				key = key.split(':').at(-1);
+			}
+			if (key == 'user_pubkeys') continue;
+			if (userMap.get(key) === undefined) {
+				console.log(`Pruning idle or deleted user: ${key}`);
+				await redisClient.delete(key);
+				await redisClient.lRem('user_pubkeys', 0, key);
+				numIdleUsers++;
+			}
+		}
+	} while (cursor !== '0');
 
 	redisClient.disconnect();
 
+	console.log(`Pruned ${numIdleUsers} users`);
 	console.log('Done!!');
 	process.exit(0);
 }
