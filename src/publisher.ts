@@ -17,7 +17,6 @@ import compression from 'compression';
 
 import * as http from 'http';
 import { updateUserPubkeyListLength } from './core/metrics';
-import { handleResponseTime } from './core/middleware';
 import {
 	DriftClient,
 	DriftEnv,
@@ -74,7 +73,6 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
-app.use(handleResponseTime);
 
 const server = http.createServer(app);
 
