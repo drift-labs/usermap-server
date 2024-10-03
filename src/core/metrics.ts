@@ -37,6 +37,7 @@ enum METRIC_TYPES {
 	cache_miss_count = 'cache_miss_count',
 	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
+	user_pubkey_list_length = 'user_pubkey_list_length',
 }
 
 export enum HEALTH_STATUS {
@@ -61,7 +62,8 @@ const exporter = new PrometheusExporter(
 		);
 	}
 );
-const meterName = 'dlob-meter';
+const meterName = 'usermap-server-meter';
+
 const meterProvider = new MeterProvider({
 	views: [
 		new View({
@@ -78,8 +80,27 @@ const meterProvider = new MeterProvider({
 		}),
 	],
 });
+
 meterProvider.addMetricReader(exporter);
 const meter = meterProvider.getMeter(meterName);
+
+let currentUserPubkeyListLength = 0;
+
+const userPubkeyListLengthGauge = meter.createObservableGauge(
+    METRIC_TYPES.user_pubkey_list_length,
+    {
+        description: 'Number of user public keys in the list',
+    }
+);
+
+userPubkeyListLengthGauge.addCallback((obs: ObservableResult) => {
+    obs.observe(currentUserPubkeyListLength);
+});
+
+// Update function now takes a value parameter
+const updateUserPubkeyListLength = (length: number) => {
+    currentUserPubkeyListLength = length;
+};
 
 const runtimeSpecsGauge = meter.createObservableGauge(
 	METRIC_TYPES.runtime_specs,
@@ -249,4 +270,5 @@ export {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	runtimeSpecsGauge,
+	updateUserPubkeyListLength
 };
