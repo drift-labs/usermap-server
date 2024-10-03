@@ -259,7 +259,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await this.redisClient.lTrim('user_pubkeys', -1, 0);
 
-			const batches = COMMON_UI_UTILS.chunks(Array.from(programAccountBufferMap.keys()), 1000)
+			const batches = COMMON_UI_UTILS.chunks(Array.from(programAccountBufferMap.keys()), 2000)
 
 			for (const batch of batches) {
 				await this.redisClient.rPush(
