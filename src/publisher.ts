@@ -271,16 +271,16 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await Promise.all(promises);
 
-			await this.redisClient.lTrim('user_pubkeys', -1, 0);
+			// await this.redisClient.lTrim('user_pubkeys', -1, 0);
 
-			const batches = COMMON_UI_UTILS.chunks(Array.from(programAccountBufferMap.keys()), 10000)
+			// const batches = COMMON_UI_UTILS.chunks(Array.from(programAccountBufferMap.keys()), 10000)
 
-			for (const batch of batches) {
-				await this.redisClient.rPush(
-					'user_pubkeys',
-					...batch
-				);
-			}
+			// for (const batch of batches) {
+			// 	await this.redisClient.rPush(
+			// 		'user_pubkeys',
+			// 		...batch
+			// 	);
+			// }
 		} catch (e) {
 			const err = e as Error;
 			console.error(
@@ -340,7 +340,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			if (syncCount % CHECK_MULTIPLIER === 0) {
 				logger.info('Checking sync on interval');
-				await this.checkSync();
+				// await this.checkSync();
 			}
 
 			syncCount++;
