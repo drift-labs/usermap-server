@@ -333,7 +333,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			if (syncCount % EXPIRY_MULTIPLIER === 0) {
 				logger.info('Checking sync on interval');
-				await this.checkSync();
+				// await this.checkSync();
 			}
 
 			syncCount++;
