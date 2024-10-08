@@ -290,7 +290,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 			await this.redisClient.rPush('user_pubkeys', ...batch);
 		}
 
-		console.log(
+		logger.info(
 			`Synchronized user_pubkeys: Added ${keysToAdd.length}, Removed ${keysToRemove.length}`
 		);
 	}
