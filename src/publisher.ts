@@ -257,16 +257,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await Promise.all(promises);
 
-			await this.redisClient.lTrim('user_pubkeys', -1, 0);
-
-			const batches = COMMON_UI_UTILS.chunks(Array.from(programAccountBufferMap.keys()), 2000)
-
-			for (const batch of batches) {
-				await this.redisClient.rPush(
-					'user_pubkeys',
-					...batch
-				);
-			}
+			await this.syncPubKeys(programAccountBufferMap);
 		} catch (e) {
 			const err = e as Error;
 			console.error(
@@ -277,6 +268,32 @@ export class WebsocketCacheProgramAccountSubscriber {
 			logger.info('Releasing sync lock');
 			logger.info(`Sync took ${performance.now() - start}ms`);
 		}
+	}
+
+	async syncPubKeys(
+		programAccountBufferMap: Map<string, Buffer>
+	): Promise<void> {
+		const newKeys = Array.from(programAccountBufferMap.keys());
+		const currentKeys = await this.redisClient.lRange('user_pubkeys', 0, -1);
+
+		const keysToAdd = newKeys.filter((key) => !currentKeys.includes(key));
+		const keysToRemove = currentKeys.filter((key) => !newKeys.includes(key));
+
+		const removalBatches = COMMON_UI_UTILS.chunks(keysToRemove, 1000);
+		for (const batch of removalBatches) {
+			await Promise.all(
+				batch.map((key) => this.redisClient.lRem('user_pubkeys', 0, key))
+			);
+		}
+
+		const additionBatches = COMMON_UI_UTILS.chunks(keysToAdd, 1000);
+		for (const batch of additionBatches) {
+			await this.redisClient.rPush('user_pubkeys', ...batch);
+		}
+
+		console.log(
+			`Synchronized user_pubkeys: Added ${keysToAdd.length}, Removed ${keysToRemove.length}`
+		);
 	}
 
 	async checkSync(): Promise<void> {
