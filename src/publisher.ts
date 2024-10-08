@@ -143,12 +143,6 @@ export class WebsocketCacheProgramAccountSubscriber {
 					(SYNC_INTERVAL * EXPIRY_MULTIPLIER) / 1000,
 					`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
 				);
-
-			await this.redisClient.rPush(
-				'user_pubkeys',
-				keyedAccountInfo.accountId.toString()
-			);
-
 			return;
 		}
 
