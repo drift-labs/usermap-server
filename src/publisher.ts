@@ -16,8 +16,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 
 import * as http from 'http';
-import { runtimeSpecsGauge } from './core/metrics';
-import { handleResponseTime } from './core/middleware';
+import { updateUserPubkeyListLength } from './core/metrics';
 import {
 	DriftClient,
 	DriftEnv,
@@ -28,7 +27,7 @@ import {
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { RedisClient, RedisClientPrefix, COMMON_UI_UTILS } from '@drift/common';
 import { setGlobalDispatcher, Agent } from 'undici';
 
 setGlobalDispatcher(
@@ -47,6 +46,8 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
+const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 90_000;
+const EXPIRY_MULTIPLIER = 4;
 
 const endpoint = process.env.ENDPOINT!;
 if (!endpoint) {
@@ -71,19 +72,6 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
-app.use(handleResponseTime);
-
-// Metrics defined here
-const bootTimeMs = Date.now();
-const commitHash = process.env.COMMIT;
-runtimeSpecsGauge.addCallback((obs) => {
-	obs.observe(bootTimeMs, {
-		commit: commitHash,
-		driftEnv,
-		rpcEndpoint: endpoint,
-		wsEndpoint: wsEndpoint,
-	});
-});
 
 const server = http.createServer(app);
 
@@ -144,28 +132,34 @@ export class WebsocketCacheProgramAccountSubscriber {
 		const existingData = await this.redisClient.getRaw(
 			keyedAccountInfo.accountId.toString()
 		);
+
 		if (!existingData) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.setRaw(
-				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
-			);
-			await this.redisClient.rPush(
-				'user_pubkeys',
-				keyedAccountInfo.accountId.toString()
-			);
+
+			await this.redisClient
+				.forceGetClient()
+				.setex(
+					keyedAccountInfo.accountId.toString(),
+					(SYNC_INTERVAL * EXPIRY_MULTIPLIER) / 1000,
+					`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
+				);
 			return;
 		}
+
 		const existingSlot = existingData.split('::')[0];
+
 		if (
 			incomingSlot >= parseInt(existingSlot) ||
 			isNaN(parseInt(existingSlot))
 		) {
 			this.lastWriteTs = Date.now();
-			await this.redisClient.setRaw(
-				keyedAccountInfo.accountId.toString(),
-				`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
-			);
+			await this.redisClient
+				.forceGetClient()
+				.setex(
+					keyedAccountInfo.accountId.toString(),
+					(SYNC_INTERVAL * EXPIRY_MULTIPLIER) / 1000,
+					`${incomingSlot}::${keyedAccountInfo.accountInfo.data.toString('base64')}`
+				);
 			return;
 		}
 	}
@@ -253,7 +247,10 @@ export class WebsocketCacheProgramAccountSubscriber {
 						await this.handleRpcResponse(context, keyedAccountInfo);
 					})()
 			);
+
 			await Promise.all(promises);
+
+			await this.syncPubKeys(programAccountBufferMap);
 		} catch (e) {
 			const err = e as Error;
 			console.error(
@@ -266,6 +263,70 @@ export class WebsocketCacheProgramAccountSubscriber {
 		}
 	}
 
+	async syncPubKeys(
+		programAccountBufferMap: Map<string, Buffer>
+	): Promise<void> {
+		const newKeys = Array.from(programAccountBufferMap.keys());
+		const currentKeys = await this.redisClient.lRange('user_pubkeys', 0, -1);
+
+		const keysToAdd = newKeys.filter((key) => !currentKeys.includes(key));
+		const keysToRemove = currentKeys.filter((key) => !newKeys.includes(key));
+
+		const removalBatches = COMMON_UI_UTILS.chunks(keysToRemove, 100);
+		for (const batch of removalBatches) {
+			await Promise.all(
+				batch.map((key) => this.redisClient.lRem('user_pubkeys', 0, key))
+			);
+		}
+
+		const additionBatches = COMMON_UI_UTILS.chunks(keysToAdd, 100);
+		for (const batch of additionBatches) {
+			await this.redisClient.rPush('user_pubkeys', ...batch);
+		}
+
+		logger.info(
+			`Synchronized user_pubkeys: Added ${keysToAdd.length}, Removed ${keysToRemove.length}`
+		);
+	}
+
+	async checkSync(): Promise<void> {
+		if (this.syncLock) {
+			logger.info('SYNC LOCKED DURING CHECK');
+			return;
+		}
+
+		const storedUserPubkeys = await this.redisClient.lRange(
+			'user_pubkeys',
+			0,
+			-1
+		);
+
+		const removedKeys = [];
+		await Promise.all(
+			storedUserPubkeys.map(async (pubkey) => {
+				const exists = await this.redisClient.forceGetClient().exists(pubkey);
+				if (!exists) {
+					removedKeys.push(pubkey);
+				}
+			})
+		);
+
+		if (removedKeys.length > 0) {
+			await Promise.all(
+				removedKeys.map(async (pubkey) => {
+					this.redisClient.lRem('user_pubkeys', 0, pubkey);
+				})
+			);
+		}
+
+		const updatedListLength = await this.redisClient.lLen('user_pubkeys');
+		updateUserPubkeyListLength(updatedListLength);
+
+		logger.warn(
+			`Found ${removedKeys.length} keys to remove from user_pubkeys list`
+		);
+	}
+
 	async subscribe(): Promise<void> {
 		await this.decoder.init();
 
@@ -273,13 +334,18 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 
-		const syncInterval = setInterval(
-			async () => {
-				logger.info('Syncing on interval');
-				await this.sync();
-			},
-			parseInt(process.env.SYNC_INTERVAL) || 90_000
-		);
+		let syncCount = 0;
+		const syncInterval = setInterval(async () => {
+			logger.info('Syncing on interval');
+			await this.sync();
+
+			if (syncCount % EXPIRY_MULTIPLIER === 0) {
+				logger.info('Checking sync on interval');
+				await this.checkSync();
+			}
+
+			syncCount++;
+		}, SYNC_INTERVAL);
 
 		this.syncInterval = syncInterval;
 
