@@ -27,7 +27,8 @@ import {
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';
-import { RedisClient, RedisClientPrefix, COMMON_UI_UTILS } from '@drift/common';
+import { COMMON_UI_UTILS } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { setGlobalDispatcher, Agent } from 'undici';
 
 setGlobalDispatcher(
