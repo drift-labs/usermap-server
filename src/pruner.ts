@@ -1,5 +1,5 @@
 import { DriftClient, DriftEnv, UserMap, Wallet } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { Connection, Keypair } from '@solana/web3.js';
 import { sleep } from './utils/utils';
 import { logger } from './utils/logger';
