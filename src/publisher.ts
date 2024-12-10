@@ -9,7 +9,7 @@ import {
 	PublicKey,
 } from '@solana/web3.js';
 import { logger } from './utils/logger';
-import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
 import cors from 'cors';
 import express from 'express';
 import morgan from 'morgan';
@@ -30,6 +30,15 @@ import { ZSTDDecoder } from 'zstddec';
 import { COMMON_UI_UTILS } from '@drift/common';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { setGlobalDispatcher, Agent } from 'undici';
+import { ClientDuplexStream } from '@grpc/grpc-js';
+import {
+	CommitmentLevel,
+	SubscribeRequest,
+	SubscribeUpdate,
+} from '@triton-one/yellowstone-grpc';
+import Client from '@triton-one/yellowstone-grpc';
+
+import bs58 from 'bs58';
 
 setGlobalDispatcher(
 	new Agent({
@@ -50,7 +59,10 @@ const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
 const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 90_000;
 const EXPIRY_MULTIPLIER = 4;
 
-const endpoint = process.env.ENDPOINT!;
+const token = process.env.TOKEN;
+const endpoint = token
+	? process.env.ENDPOINT + `/${token}`
+	: process.env.ENDPOINT;
 if (!endpoint) {
 	logger.error('ENDPOINT env var is required');
 	process.exit(1);
@@ -86,7 +98,7 @@ server.listen(httpPort);
 server.keepAliveTimeout = 61 * 1000;
 server.headersTimeout = 65 * 1000;
 
-export class WebsocketCacheProgramAccountSubscriber {
+export class grpcCacheProgramAccountSubscriber {
 	program: Program;
 	redisClient: RedisClient;
 	listenerId: number | undefined;
@@ -106,6 +118,9 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 	decoder: ZSTDDecoder;
 
+	client: Client;
+	stream: ClientDuplexStream<SubscribeRequest, SubscribeUpdate>;
+
 	constructor(
 		program: Program,
 		redisClient: RedisClient,
@@ -120,6 +135,12 @@ export class WebsocketCacheProgramAccountSubscriber {
 		this.resubTimeoutMs = resubTimeoutMs;
 		this.receivingData = false;
 		this.decoder = new ZSTDDecoder();
+		this.client = new Client(endpoint, token, {
+			'grpc.keepalive_time_ms': 10_000,
+			'grpc.keepalive_timeout_ms': 1_000,
+			'grpc.keepalive_permit_without_calls': 1,
+			'grpc.max_receive_message_length': 100 * 1024 * 1024,
+		});
 	}
 
 	async handleRpcResponse(
@@ -354,26 +375,90 @@ export class WebsocketCacheProgramAccountSubscriber {
 			await this.sync();
 		}
 
-		this.listenerId = this.program.provider.connection.onProgramAccountChange(
-			this.program.programId,
-			(keyedAccountInfo, context) => {
-				if (this.resubTimeoutMs) {
-					clearTimeout(this.timeoutId);
-					this.handleRpcResponse(context, keyedAccountInfo);
-					this.setTimeout();
-				} else {
-					this.handleRpcResponse(context, keyedAccountInfo);
-				}
+		// Subscribe with grpc
+		this.stream = await this.client.subscribe();
+		const filters = this.options.filters.map((filter) => {
+			return {
+				memcmp: {
+					offset: filter.memcmp.offset.toString(),
+					bytes: bs58.decode(filter.memcmp.bytes),
+				},
+			};
+		});
+		const request: SubscribeRequest = {
+			slots: {},
+			accounts: {
+				drift: {
+					account: [],
+					owner: [this.program.programId.toBase58()],
+					filters,
+				},
 			},
-			this.options.commitment ??
-				(this.program.provider as AnchorProvider).opts.commitment,
-			this.options.filters
-		);
+			transactions: {},
+			blocks: {},
+			blocksMeta: {},
+			accountsDataSlice: [],
+			commitment: CommitmentLevel.CONFIRMED,
+			entry: {},
+			transactionsStatus: {},
+		};
 
-		if (this.resubTimeoutMs) {
-			this.receivingData = true;
-			this.setTimeout();
-		}
+		this.stream.on('data', (chunk: SubscribeUpdate) => {
+			if (!chunk.account) {
+				return;
+			}
+			const slot = Number(chunk.account.slot);
+			const accountInfo = {
+				owner: new PublicKey(chunk.account.account.owner),
+				lamports: Number(chunk.account.account.lamports),
+				data: Buffer.from(chunk.account.account.data),
+				executable: chunk.account.account.executable,
+				rentEpoch: Number(chunk.account.account.rentEpoch),
+			};
+
+			if (this.resubTimeoutMs) {
+				this.receivingData = true;
+				clearTimeout(this.timeoutId);
+				this.handleRpcResponse(
+					{
+						slot,
+					},
+					{
+						accountId: new PublicKey(chunk.account.account.pubkey),
+						accountInfo,
+					}
+				);
+				this.setTimeout();
+			} else {
+				this.handleRpcResponse(
+					{
+						slot,
+					},
+					{
+						accountId: new PublicKey(chunk.account.account.pubkey),
+						accountInfo,
+					}
+				);
+			}
+		});
+
+		return new Promise<void>((resolve, reject) => {
+			this.stream.write(request, (err) => {
+				if (err === null || err === undefined) {
+					this.listenerId = 1;
+					if (this.resubTimeoutMs) {
+						this.receivingData = true;
+						this.setTimeout();
+					}
+					resolve();
+				} else {
+					reject(err);
+				}
+			});
+		}).catch((reason) => {
+			console.error(reason);
+			throw reason;
+		});
 	}
 
 	private setTimeout(): void {
@@ -392,29 +477,43 @@ export class WebsocketCacheProgramAccountSubscriber {
 		}, this.resubTimeoutMs);
 	}
 
-	async unsubscribe(onResub = false): Promise<void> {
-		if (!onResub) {
+	public async unsubscribe(onResub = false): Promise<void> {
+		if (!onResub && this.resubTimeoutMs) {
 			this.resubTimeoutMs = undefined;
-			if (this.syncInterval) {
-				clearInterval(this.syncInterval);
-			}
 		}
 		this.isUnsubscribing = true;
 		clearTimeout(this.timeoutId);
 		this.timeoutId = undefined;
 
 		if (this.listenerId != null) {
-			await this.program.provider.connection
-				.removeAccountChangeListener(this.listenerId)
-				.then(() => {
-					this.listenerId = undefined;
-					this.isUnsubscribing = false;
+			const promise = new Promise<void>((resolve, reject) => {
+				const request: SubscribeRequest = {
+					slots: {},
+					accounts: {},
+					transactions: {},
+					blocks: {},
+					blocksMeta: {},
+					accountsDataSlice: [],
+					entry: {},
+					transactionsStatus: {},
+				};
+				this.stream.write(request, (err) => {
+					if (err === null || err === undefined) {
+						this.listenerId = undefined;
+						this.isUnsubscribing = false;
+						resolve();
+					} else {
+						reject(err);
+					}
 				});
-			return;
+			}).catch((reason) => {
+				console.error(reason);
+				throw reason;
+			});
+			return promise;
 		} else {
 			this.isUnsubscribing = false;
 		}
-		return;
 	}
 }
 
@@ -441,7 +540,7 @@ async function main() {
 			});
 
 	const filters = [getUserFilter(), getNonIdleUserFilter()];
-	const subscriber = new WebsocketCacheProgramAccountSubscriber(
+	const subscriber = new grpcCacheProgramAccountSubscriber(
 		//@ts-ignore
 		program,
 		redisClient,
