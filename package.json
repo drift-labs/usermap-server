@@ -13,6 +13,7 @@
     "lint": "eslint . --ext ts --quiet",
     "lint:fix": "eslint . --ext ts --fix",
     "publisher": "ts-node src/publisher.ts",
+    "grpc-publisher": "ts-node src/grpcPublisher.ts",
     "pruner": "ts-node src/pruner.ts"
   },
   "devDependencies": {
