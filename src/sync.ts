@@ -9,11 +9,6 @@ import {
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { COMMON_UI_UTILS } from '@drift/common';
 import { logger } from './utils/logger';
-import {
-	updateUserPubkeyListLength,
-	errorCounter,
-	messageCounter,
-} from './core/metrics';
 import { ZSTDDecoder } from 'zstddec';
 import { performance } from 'perf_hooks';
 
@@ -62,7 +57,6 @@ async function sync(): Promise<void> {
 
 		logger.info('Running Sync');
 		syncLock = true;
-		messageCounter?.add(1, { label: 'sync' });
 
 		const filters = [getUserFilter(), getNonIdleUserFilter()];
 		const rpcRequestArgs = [
@@ -140,11 +134,7 @@ async function sync(): Promise<void> {
 		await Promise.all(promises);
 
 		await syncPubKeys(programAccountBufferMap);
-
-		const updatedListLength = await redisClient.lLen('user_pubkeys');
-		updateUserPubkeyListLength(updatedListLength);
 	} catch (err) {
-		errorCounter?.add(1, { label: 'sync.ts sync()' });
 		logger.error(`Error in sync(): ${(err as Error).message}`);
 		logger.error((err as Error).stack || '');
 	} finally {
@@ -209,9 +199,6 @@ async function checkSync(): Promise<void> {
 		);
 	}
 
-	const updatedListLength = await redisClient.lLen('user_pubkeys');
-	updateUserPubkeyListLength(updatedListLength);
-
 	logger.warn(
 		`Found ${removedKeys.length} keys to remove from user_pubkeys list`
 	);
@@ -238,7 +225,6 @@ async function mainChildProcess() {
 }
 
 mainChildProcess().catch((err) => {
-	errorCounter?.add(1, { label: 'sync.ts mainChildProcess' });
 	logger.error(`Unhandled error in sync.ts child process: ${err}`);
 	process.exit(1);
 });
