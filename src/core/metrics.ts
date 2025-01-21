@@ -39,7 +39,8 @@ meterProvider.addMetricReader(exporter);
 
 const meter = meterProvider.getMeter(meterName);
 
-let currentUserPubkeyListLength = 0;
+let _currentUserPubkeyListLength = 0;
+const getCurrentUserPubkeyListLength = () => _currentUserPubkeyListLength;
 
 const userPubkeyListLengthGauge = meter.createObservableGauge(
 	METRIC_TYPES.user_pubkey_list_length,
@@ -49,11 +50,11 @@ const userPubkeyListLengthGauge = meter.createObservableGauge(
 );
 
 userPubkeyListLengthGauge.addCallback((obs: ObservableResult) => {
-	obs.observe(currentUserPubkeyListLength);
+	obs.observe(getCurrentUserPubkeyListLength());
 });
 
 const updateUserPubkeyListLength = (length: number) => {
-	currentUserPubkeyListLength = length;
+	_currentUserPubkeyListLength = length;
 };
 
 let healthStatus: HEALTH_STATUS = HEALTH_STATUS.Ok;
@@ -153,4 +154,17 @@ const handleHealthCheck = (core: Core) => {
 	};
 };
 
-export { handleHealthCheck, updateUserPubkeyListLength };
+const messageCounter = meter.createCounter('message_counter', {
+	description: 'Number of messages received',
+});
+
+const errorCounter = meter.createCounter('error_counter', {
+	description: 'Number of errors received',
+});
+
+export {
+	handleHealthCheck,
+	updateUserPubkeyListLength,
+	messageCounter,
+	errorCounter,
+};
