@@ -44,7 +44,7 @@ import {
 import Client from '@triton-one/yellowstone-grpc';
 
 import bs58 from 'bs58';
-import { Counter } from '@opentelemetry/api';
+import { fork } from 'child_process';
 
 setGlobalDispatcher(
 	new Agent({
@@ -80,7 +80,6 @@ logger.info(`WS endpoint:        ${wsEndpoint}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
 logger.info(`Using GRPC:           ${useGrpc}`);
 
-const SYNC_ON_STARTUP = process.env.SYNC_ON_STARTUP;
 const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL || '90000');
 
 const EXPIRY_MULTIPLIER = 4;
@@ -331,25 +330,6 @@ export class WebsocketCacheProgramAccountSubscriber {
 			return;
 		}
 
-		let syncCount = 0;
-		const syncInterval = setInterval(async () => {
-			logger.info('Syncing on interval');
-			await this.sync();
-
-			if (syncCount % EXPIRY_MULTIPLIER === 0) {
-				logger.info('Checking sync on interval');
-				await this.checkSync();
-			}
-
-			syncCount++;
-		}, SYNC_INTERVAL);
-
-		this.syncInterval = syncInterval;
-
-		if (SYNC_ON_STARTUP === 'true') {
-			await this.sync();
-		}
-
 		this.listenerId = this.program.provider.connection.onProgramAccountChange(
 			this.program.programId,
 			(keyedAccountInfo, context) => {
@@ -442,25 +422,6 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 
 		if (this.listenerId != null || this.isUnsubscribing) {
 			return;
-		}
-
-		let syncCount = 0;
-		const syncInterval = setInterval(async () => {
-			logger.info('Syncing on interval');
-			await this.sync();
-
-			if (syncCount % EXPIRY_MULTIPLIER === 0) {
-				logger.info('Checking sync on interval');
-				await this.checkSync();
-			}
-
-			syncCount++;
-		}, SYNC_INTERVAL);
-
-		this.syncInterval = syncInterval;
-
-		if (SYNC_ON_STARTUP === 'true') {
-			await this.sync();
 		}
 
 		this.stream = await this.client.subscribe();
@@ -631,6 +592,8 @@ export function setupServer(): { app: express.Express; httpPort: number } {
 }
 
 async function main() {
+	fork('./src/sync.ts');
+
 	const connection = new Connection(endpoint, 'confirmed');
 	const wallet = new Wallet(new Keypair());
 	const driftClient = new DriftClient({
