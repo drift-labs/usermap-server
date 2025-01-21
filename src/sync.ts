@@ -48,10 +48,6 @@ const redisClient = USE_ELASTICACHE
 			opts: { password: REDIS_PASSWORD, tls: null },
 		});
 
-// ---------------------------------------------------------------------------
-// Sync Logic
-// ---------------------------------------------------------------------------
-
 let syncLock = false;
 
 const decoder = new ZSTDDecoder();
@@ -224,7 +220,6 @@ async function checkSync(): Promise<void> {
 async function mainChildProcess() {
 	await decoder.init();
 
-	// Optional: run a sync immediately on startup
 	if (SYNC_ON_STARTUP) {
 		await sync();
 	}
