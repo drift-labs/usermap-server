@@ -16,7 +16,11 @@ import morgan from 'morgan';
 import compression from 'compression';
 
 import * as http from 'http';
-import { updateUserPubkeyListLength } from './core/metrics';
+import {
+	updateUserPubkeyListLength,
+	messageCounter,
+	errorCounter,
+} from './core/metrics';
 import {
 	DriftClient,
 	DriftEnv,
@@ -40,6 +44,7 @@ import {
 import Client from '@triton-one/yellowstone-grpc';
 
 import bs58 from 'bs58';
+import { Counter } from '@opentelemetry/api';
 
 setGlobalDispatcher(
 	new Agent({
@@ -173,6 +178,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			logger.info('Running Sync');
 			this.syncLock = true;
+			messageCounter?.add(1, { label: 'sync' });
 
 			const filters = [getUserFilter(), getNonIdleUserFilter()];
 			const rpcRequestArgs = [
@@ -236,8 +242,14 @@ export class WebsocketCacheProgramAccountSubscriber {
 
 			await Promise.all(promises);
 			await this.syncPubKeys(programAccountBufferMap);
+
+			const updatedListLength = await this.redisClient.lLen('user_pubkeys');
+			updateUserPubkeyListLength(updatedListLength);
 		} catch (e) {
 			const err = e as Error;
+			errorCounter?.add(1, {
+				label: 'WebsocketCacheProgramAccountSubscriber.sync',
+			});
 			console.error(
 				`Error in WebsocketCacheProgramAccountSubscriber.sync(): ${err.message} ${err.stack ?? ''}`
 			);
@@ -341,6 +353,7 @@ export class WebsocketCacheProgramAccountSubscriber {
 		this.listenerId = this.program.provider.connection.onProgramAccountChange(
 			this.program.programId,
 			(keyedAccountInfo, context) => {
+				messageCounter?.add(1, { label: 'sync' });
 				if (this.resubTimeoutMs) {
 					clearTimeout(this.timeoutId);
 					this.handleRpcResponse(context, keyedAccountInfo);
@@ -488,6 +501,8 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 				rentEpoch: Number(chunk.account.account.rentEpoch),
 			};
 
+			messageCounter?.add(1, { label: 'grpc_data' });
+
 			if (this.resubTimeoutMs) {
 				this.receivingData = true;
 				clearTimeout(this.timeoutId);
@@ -509,6 +524,11 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 				);
 			}
 		});
+		this.stream.on('error', (err) => {
+			logger.error(`GRPC error: ${err.message}`);
+			console.error('GRPC stream error:', err);
+			errorCounter?.add(1, { label: 'grpc_stream_error', error: err.message });
+		});
 
 		return new Promise<void>((resolve, reject) => {
 			this.stream.write(request, (err) => {
@@ -524,7 +544,13 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 				}
 			});
 		}).catch((reason) => {
-			console.error(reason);
+			errorCounter?.add(1, {
+				label: 'grpcCacheProgramAccountSubscriber.subscribe',
+			});
+			console.error(
+				'Error in grpcCacheProgramAccountSubscriber.subscribe():',
+				reason
+			);
 			throw reason;
 		});
 	}
@@ -558,10 +584,20 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 						reject(err);
 					}
 				});
-			}).catch((reason) => {
-				console.error(reason);
-				throw reason;
-			});
+			})
+				.catch((reason) => {
+					errorCounter?.add(1, {
+						label: 'grpcCacheProgramAccountSubscriber.unsubscribe',
+					});
+					console.error(
+						'Error in grpcCacheProgramAccountSubscriber.unsubscribe():',
+						reason
+					);
+					throw reason;
+				})
+				.finally(() => {
+					this.stream.end();
+				});
 			return promise;
 		} else {
 			this.isUnsubscribing = false;
@@ -658,7 +694,8 @@ async function recursiveTryCatch(f: () => Promise<void>) {
 	try {
 		await f();
 	} catch (e) {
-		console.error(e);
+		errorCounter?.add(1, { label: 'recursiveTryCatch' });
+		console.error('Error in recursiveTryCatch:', e);
 		await sleep(15000);
 		await recursiveTryCatch(f);
 	}
