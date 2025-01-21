@@ -45,6 +45,7 @@ import Client from '@triton-one/yellowstone-grpc';
 
 import bs58 from 'bs58';
 import { fork } from 'child_process';
+import path from 'path';
 
 setGlobalDispatcher(
 	new Agent({
@@ -592,7 +593,8 @@ export function setupServer(): { app: express.Express; httpPort: number } {
 }
 
 async function main() {
-	fork('./src/sync.ts');
+	const syncFileName = 'sync' + (isTsRuntime() ? '.ts' : '.js');
+	fork(path.join(__dirname, syncFileName));
 
 	const connection = new Connection(endpoint, 'confirmed');
 	const wallet = new Wallet(new Keypair());
@@ -652,6 +654,16 @@ async function main() {
 	console.log(`Server is set up and running: ${httpPort}`);
 	console.log(``);
 }
+
+export const isTsRuntime = (): boolean => {
+	// @ts-ignore - This is how to check for tsx unfortunately https://github.com/privatenumber/tsx/issues/49
+	const isTsx: boolean = process._preload_modules.some((m: string) =>
+		m.includes('tsx')
+	);
+	const isTsNode = process.argv.some((arg) => arg.includes('ts-node'));
+	const isBun = process.versions.bun !== undefined;
+	return isTsNode || isTsx || isBun;
+};
 
 async function recursiveTryCatch(f: () => Promise<void>) {
 	try {
