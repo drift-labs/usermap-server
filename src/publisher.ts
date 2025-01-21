@@ -430,8 +430,8 @@ class grpcCacheProgramAccountSubscriber extends WebsocketCacheProgramAccountSubs
 	) {
 		super(program, redisClient, options, resubTimeoutMs);
 		this.client = new Client(endpoint, token, {
-			'grpc.keepalive_time_ms': 10_000,
-			'grpc.keepalive_timeout_ms': 1_000,
+			'grpc.keepalive_time_ms': 60_000,
+			'grpc.keepalive_timeout_ms': 30_000,
 			'grpc.keepalive_permit_without_calls': 1,
 			'grpc.max_receive_message_length': 100 * 1024 * 1024,
 		});
