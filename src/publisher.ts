@@ -64,22 +64,23 @@ const USE_ELASTICACHE = process.env.ELASTICACHE === 'true' || false;
 
 const useGrpc = process.env.USE_GRPC === 'true';
 const token = process.env.TOKEN;
-const endpoint = useGrpc
-	? token
-		? process.env.ENDPOINT + `/${token}`
-		: process.env.ENDPOINT
-	: process.env.ENDPOINT;
-
-if (!endpoint || (useGrpc && !token)) {
-	logger.error('ENDPOINT (and TOKEN if using gRPC) env var required');
-	process.exit(1);
-}
+const endpoint = process.env.ENDPOINT;
+const grpcEndpoint = useGrpc
+	? process.env.GRPC_ENDPOINT ?? endpoint + `/${token}`
+	: '';
 
 const wsEndpoint = process.env.WS_ENDPOINT || endpoint;
 logger.info(`RPC endpoint:       ${endpoint}`);
 logger.info(`WS endpoint:        ${wsEndpoint}`);
+logger.info(`GRPC endpoint:      ${grpcEndpoint}`);
+logger.info(`GRPC Token:         ${token?.slice(0, 4)}...`);
+logger.info(`Using GRPC:         ${useGrpc}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
-logger.info(`Using GRPC:           ${useGrpc}`);
+
+if (useGrpc && !grpcEndpoint) {
+	logger.error('GRPC_ENDPOINT is required for gRPC (or ENDPOINT and TOKEN)');
+	process.exit(1);
+}
 
 const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL || '90000');
 
@@ -620,7 +621,7 @@ async function main() {
 
 	const subscriber = useGrpc
 		? new grpcCacheProgramAccountSubscriber(
-				endpoint!,
+				grpcEndpoint,
 				token!,
 				//@ts-ignore
 				program,
