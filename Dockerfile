@@ -1,5 +1,6 @@
-FROM public.ecr.aws/bitnami/node:20.18.1
-RUN apt-get install git
+# Official Node image from ECR Public — the bitnami catalog images were
+# removed upstream (versioned tags 404 since late 2025). Ships git already.
+FROM public.ecr.aws/docker/library/node:20.18.1
 ENV NODE_ENV=production
 RUN npm install -g typescript
 
