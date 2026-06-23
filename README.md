@@ -16,7 +16,7 @@ This project implements a caching system for Drift Protocol user accounts using 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/drift-labs/usermap-server.git
+   git clone https://github.com/velocity-exchange/usermap-server.git
    cd usermap-server
    ```
 2. Install dependancies:
