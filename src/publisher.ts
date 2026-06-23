@@ -27,7 +27,7 @@ import {
 	Wallet,
 	getNonIdleUserFilter,
 	getUserFilter,
-} from '@drift-labs/sdk';
+} from '@velocity-exchange/sdk';
 import { sleep } from './utils/utils';
 import { setupEndpoints } from './endpoints';
 import { ZSTDDecoder } from 'zstddec';

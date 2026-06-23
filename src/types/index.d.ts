@@ -1,6 +1,6 @@
 import { Express } from 'express';
 import { Connection, Wallet } from '@solana/web3.js';
-import { DriftClient } from '@drift-labs/sdk';
+import { DriftClient } from '@velocity-exchange/sdk';
 import { RedisClient } from './utils/redisClient';
 import { WebsocketCacheProgramAccountSubscriber } from '../publisher';
 import { grpcCacheProgramAccountSubscriber } from 'src/grpcPublisher';

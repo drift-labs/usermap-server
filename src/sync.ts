@@ -5,7 +5,7 @@ import {
 	getConfig,
 	getNonIdleUserFilter,
 	getUserFilter,
-} from '@drift-labs/sdk';
+} from '@velocity-exchange/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { COMMON_UI_UTILS } from '@drift/common';
 import { logger } from './utils/logger';
